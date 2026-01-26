@@ -23,6 +23,7 @@
     align-items: center;
     gap: 8px;
     padding: 0 10px;
+    
   }
 
   button {
@@ -59,6 +60,38 @@
   import { StreamLanguage } from "https://esm.sh/@codemirror/language";
   import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
   import { lintGutter, linter } from "https://esm.sh/@codemirror/lint";
+
+  // ===== PENGUINMOD BRIDGE =====
+function sendToPenguin(type, payload) {
+  parent.postMessage({
+    source: "TextScratchEditor",
+    type,
+    payload
+  }, "*");
+}
+
+window.runCode = () => {
+  const code = view.state.doc.toString();
+  sendToPenguin("run", code);
+};
+
+window.saveCode = () => {
+  const code = view.state.doc.toString();
+  sendToPenguin("save", code);
+};
+
+// Receive code from PenguinMod
+window.addEventListener("message", e => {
+  if (e.data?.type === "load" && typeof e.data.payload === "string") {
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: e.data.payload
+      }
+    });
+  }
+});
 
   /* =====================
      SCRATCH TOKENIZER
@@ -204,6 +237,7 @@
     <button onclick="runCode()">▶ Execute</button>
     <div style="margin-left:auto;opacity:.6">Text Editor</div>
   </div>
+  <button onclick="saveCode()">💾 Save</button>
 
   <div id="editor"></div>
 
@@ -213,3 +247,4 @@
   </div>
 </body>
 </html>
+
