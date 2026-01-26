@@ -4,19 +4,31 @@
 <meta charset="UTF-8">
 <title>Text Scratch Editor</title>
 <style>
-html, body { margin: 0; padding: 0; height: 100%; font-family: monospace; background: #1e1e1e; color: white; display: flex; flex-direction: column; }
-#topbar { height: 40px; background: #252526; display: flex; align-items: center; padding: 0 10px; gap: 10px; }
-button { background: #0e639c; border: none; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+html, body {
+  margin: 0; padding: 0; height: 100%; width: 100%;
+  font-family: monospace; background: #1e1e1e; color: white;
+  display: flex; flex-direction: column;
+}
+#topbar {
+  height: 40px; background: #252526;
+  display: flex; align-items: center; padding: 0 10px; gap: 10px;
+  flex-shrink: 0;
+}
+button {
+  background: #0e639c; border: none; color: white;
+  padding: 5px 12px; border-radius: 4px; cursor: pointer;
+}
 button:hover { background: #1177bb; }
-#container { flex: 1; display: flex; overflow: hidden; }
-#editor { flex: 1; height: 100%; }
-#preview { flex: 0.4; background: #1b1b1b; border-left: 1px solid #333; overflow-y: auto; padding: 10px; }
+#container {
+  flex: 1; display: flex; overflow: hidden;
+}
+#editor { flex: 1; min-width: 0; height: 100%; }
+#preview { flex: 0.4; background: #1b1b1b; border-left: 1px solid #333; overflow-y: auto; padding: 10px; min-width: 0; }
 .block { border-left: 4px solid #4FC3F7; padding: 2px 4px; margin: 2px 0; cursor: pointer; }
 .motion { border-left-color: #4FC3F7; }
 .control { border-left-color: #FFB74D; }
 .event { border-left-color: #AED581; }
 .nested { margin-left: 20px; }
-.error { background: #ff4c4c33; }
 </style>
 </head>
 <body>
@@ -37,7 +49,9 @@ button:hover { background: #1177bb; }
 require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs" } });
 
 require(["vs/editor/editor.main"], () => {
+
   monaco.languages.register({ id: "scratchtext" });
+
   monaco.languages.setMonarchTokensProvider("scratchtext", {
     tokenizer: {
       root: [
@@ -73,6 +87,9 @@ require(["vs/editor/editor.main"], () => {
     minimap: { enabled: false }
   });
 
+  // Force focus so typing works
+  editor.focus();
+
   const preview = document.getElementById("preview");
 
   function classify(line){
@@ -83,7 +100,7 @@ require(["vs/editor/editor.main"], () => {
   }
 
   function parseScratchText(code) {
-    const lines = code.split("\n").map(l => l.trim()).filter(Boolean);
+    const lines = code.split("\n").map(l=>l.trim()).filter(Boolean);
     const stack = [{children: []}];
     lines.forEach(line => {
       if (line.endsWith("{")) {
@@ -129,24 +146,22 @@ require(["vs/editor/editor.main"], () => {
   document.getElementById("saveBtn").onclick = () => {
     const code = editor.getValue();
     const parsed = updatePreview();
-    
-    // send postMessage to parent window (PenguinMod extension)
-    window.parent.postMessage({
+
+    // send message to parent window
+    window.opener?.postMessage({
       type: "PM_TEXT_CODE_SAVE",
       source: "TextEditor",
       code,
       parsed
     }, "*");
 
-    // Confirm alert
     alert("💾 Code sent to PenguinMod!");
   };
 
   document.getElementById("runBtn").onclick = () => {
     const code = editor.getValue();
     const parsed = updatePreview();
-    
-    window.parent.postMessage({
+    window.opener?.postMessage({
       type: "PM_TEXT_CODE_EXECUTE",
       source: "TextEditor",
       code,
@@ -156,11 +171,12 @@ require(["vs/editor/editor.main"], () => {
 
   // Receive code from PM extension
   window.addEventListener("message", e => {
-    if (e.data?.type === "PM_TEXT_CODE_LOAD" && e.data.code) {
+    if(e.data?.type === "PM_TEXT_CODE_LOAD" && e.data.code){
       editor.setValue(e.data.code);
       updatePreview();
     }
   });
+
 });
 </script>
 </body>
