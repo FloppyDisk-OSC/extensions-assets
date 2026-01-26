@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Scratch Text Mode</title>
+<title>Text Scratch Editor</title>
 
 <style>
   body {
@@ -16,14 +16,13 @@
   }
 
   .toolbar {
-    height: 40px;
+    height: 42px;
     background: #161a23;
     border-bottom: 1px solid #262a36;
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 10px;
-    
   }
 
   button {
@@ -55,43 +54,11 @@
   import { EditorState } from "https://esm.sh/@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "https://esm.sh/@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "https://esm.sh/@codemirror/commands";
-  import { indentOnInput, bracketMatching, foldGutter, foldInside } from "https://esm.sh/@codemirror/language";
+  import { indentOnInput, bracketMatching, foldGutter } from "https://esm.sh/@codemirror/language";
   import { closeBrackets, closeBracketsKeymap, autocompletion } from "https://esm.sh/@codemirror/autocomplete";
   import { StreamLanguage } from "https://esm.sh/@codemirror/language";
-  import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
   import { lintGutter, linter } from "https://esm.sh/@codemirror/lint";
-
-  // ===== PENGUINMOD BRIDGE =====
-function sendToPenguin(type, payload) {
-  parent.postMessage({
-    source: "TextScratchEditor",
-    type,
-    payload
-  }, "*");
-}
-
-window.runCode = () => {
-  const code = view.state.doc.toString();
-  sendToPenguin("run", code);
-};
-
-window.saveCode = () => {
-  const code = view.state.doc.toString();
-  sendToPenguin("save", code);
-};
-
-// Receive code from PenguinMod
-window.addEventListener("message", e => {
-  if (e.data?.type === "load" && typeof e.data.payload === "string") {
-    view.dispatch({
-      changes: {
-        from: 0,
-        to: view.state.doc.length,
-        insert: e.data.payload
-      }
-    });
-  }
-});
+  import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
 
   /* =====================
      SCRATCH TOKENIZER
@@ -114,9 +81,9 @@ window.addEventListener("message", e => {
      SYNTAX COLORS
   ===================== */
   const scratchTheme = EditorView.theme({
-    ".cm-motion": { color: "#4c97ff" },     // Motion blue
-    ".cm-control": { color: "#ffab19" },    // Control orange
-    ".cm-sensing": { color: "#5cb1d6" },    // Sensing light blue
+    ".cm-motion": { color: "#4c97ff" },
+    ".cm-control": { color: "#ffab19" },
+    ".cm-sensing": { color: "#5cb1d6" },
     ".cm-number": { color: "#c77dff" },
     ".cm-string": { color: "#ffd166" },
     ".cm-operator": { color: "#2ec4b6" }
@@ -146,17 +113,17 @@ window.addEventListener("message", e => {
   }
 
   /* =====================
-     BASIC ERROR LINTER
+     BASIC ERROR CHECK
   ===================== */
   const scratchLinter = linter(view => {
     const text = view.state.doc.toString();
     const errors = [];
-    let balance = 0;
+    let depth = 0;
 
     for (let i = 0; i < text.length; i++) {
-      if (text[i] === "{") balance++;
-      if (text[i] === "}") balance--;
-      if (balance < 0) {
+      if (text[i] === "{") depth++;
+      if (text[i] === "}") depth--;
+      if (depth < 0) {
         errors.push({
           from: i,
           to: i + 1,
@@ -167,7 +134,7 @@ window.addEventListener("message", e => {
       }
     }
 
-    if (balance > 0) {
+    if (depth > 0) {
       errors.push({
         from: text.length - 1,
         to: text.length,
@@ -180,7 +147,7 @@ window.addEventListener("message", e => {
   });
 
   /* =====================
-     EDITOR SETUP
+     EDITOR INIT
   ===================== */
   const startCode =
 `repeat (10) times {
@@ -195,13 +162,7 @@ window.addEventListener("message", e => {
       lineNumbers(),
       highlightActiveLine(),
       history(),
-      foldGutter({
-        markerDOM: open => {
-          const span = document.createElement("span");
-          span.textContent = open ? "▼" : "▶";
-          return span;
-        }
-      }),
+      foldGutter(),
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
@@ -226,25 +187,51 @@ window.addEventListener("message", e => {
 
   view.focus();
 
+  /* =====================
+     PENGUINMOD BRIDGE
+  ===================== */
+  function send(type, payload) {
+    parent.postMessage({
+      source: "TextScratchEditor",
+      type,
+      payload
+    }, "*");
+  }
+
   window.runCode = () => {
-    console.log("RUN:\n" + view.state.doc.toString());
+    send("run", view.state.doc.toString());
   };
+
+  window.saveCode = () => {
+    send("save", view.state.doc.toString());
+  };
+
+  window.addEventListener("message", e => {
+    if (e.data?.type === "load" && typeof e.data.payload === "string") {
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: e.data.payload
+        }
+      });
+    }
+  });
 </script>
 </head>
 
 <body>
   <div class="toolbar">
-    <button onclick="runCode()">▶ Execute</button>
-    <div style="margin-left:auto;opacity:.6">Text Editor</div>
+    <button onclick="runCode()">▶ Run</button>
+    <button onclick="saveCode()">💾 Save</button>
+    <div style="margin-left:auto;opacity:.6">Text Scratch Mode</div>
   </div>
-  <button onclick="saveCode()">💾 Save</button>
 
   <div id="editor"></div>
 
   <div class="statusbar">
-    <span>Typing OK • Folding OK • Linting OK</span>
-    <span>Ready for runtime</span>
+    <span>Connected to PenguinMod</span>
+    <span>Scratch Text Editor</span>
   </div>
 </body>
 </html>
-
