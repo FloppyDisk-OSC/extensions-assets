@@ -48,10 +48,15 @@ button:hover { background: #1177bb; }
 <script>
 require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs" } });
 
-require(["vs/editor/editor.main"], () => {
+function initEditor() {
+  const editorContainer = document.getElementById("editor");
+  if (editorContainer.clientWidth === 0 || editorContainer.clientHeight === 0) {
+    // wait for container to be properly sized
+    requestAnimationFrame(initEditor);
+    return;
+  }
 
   monaco.languages.register({ id: "scratchtext" });
-
   monaco.languages.setMonarchTokensProvider("scratchtext", {
     tokenizer: {
       root: [
@@ -78,7 +83,7 @@ require(["vs/editor/editor.main"], () => {
     ]
   });
 
-  const editor = monaco.editor.create(document.getElementById("editor"), {
+  const editor = monaco.editor.create(editorContainer, {
     value: "",
     language: "scratchtext",
     theme: "scratchDark",
@@ -145,21 +150,22 @@ require(["vs/editor/editor.main"], () => {
     const code = editor.getValue();
     const parsed = updatePreview();
     window.opener?.postMessage({ type, source: "TextEditor", code, parsed }, "*");
-    if (type === "PM_TEXT_CODE_SAVE") alert("💾 Code saved!");
+    if(type === "PM_TEXT_CODE_SAVE") alert("💾 Code saved!");
   }
 
   document.getElementById("saveBtn").onclick = () => sendMessage("PM_TEXT_CODE_SAVE");
   document.getElementById("runBtn").onclick = () => sendMessage("PM_TEXT_CODE_EXECUTE");
 
-  // load code from PM
   window.addEventListener("message", e => {
     if(e.data?.type === "PM_TEXT_CODE_LOAD" && e.data.code){
       editor.setValue(e.data.code);
       updatePreview();
     }
   });
+}
 
-});
+// wait until DOM is fully loaded
+window.onload = initEditor;
 </script>
 </body>
 </html>
