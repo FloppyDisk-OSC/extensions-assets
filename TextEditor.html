@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scratch Text Mode</title>
+
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    background: #0f1117;
+    color: #e6e6eb;
+    display: flex;
+    flex-direction: column;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+
+  .toolbar {
+    height: 40px;
+    background: #161a23;
+    border-bottom: 1px solid #262a36;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  button {
+    background: #23283a;
+    color: #e6e6eb;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  button:hover { background: #2f3560; }
+
+  #editor { flex: 1; }
+
+  .statusbar {
+    height: 22px;
+    background: #161a23;
+    border-top: 1px solid #262a36;
+    font-size: 11px;
+    padding: 4px 8px;
+    opacity: 0.7;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+
+<script type="module">
+  import { EditorState } from "https://esm.sh/@codemirror/state";
+  import { EditorView, keymap, lineNumbers, highlightActiveLine } from "https://esm.sh/@codemirror/view";
+  import { defaultKeymap, history, historyKeymap } from "https://esm.sh/@codemirror/commands";
+  import { indentOnInput, bracketMatching, foldGutter, foldInside } from "https://esm.sh/@codemirror/language";
+  import { closeBrackets, closeBracketsKeymap, autocompletion } from "https://esm.sh/@codemirror/autocomplete";
+  import { StreamLanguage } from "https://esm.sh/@codemirror/language";
+  import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+  import { lintGutter, linter } from "https://esm.sh/@codemirror/lint";
+
+  /* =====================
+     SCRATCH TOKENIZER
+  ===================== */
+  const scratchLang = StreamLanguage.define({
+    token(stream) {
+      if (stream.match(/move|turn|go|point/i)) return "motion";
+      if (stream.match(/repeat|forever|if|else|wait/i)) return "control";
+      if (stream.match(/key|touching|mouse|pressed\?/i)) return "sensing";
+      if (stream.match(/<|>|=/)) return "operator";
+      if (stream.match(/\d+(\.\d+)?/)) return "number";
+      if (stream.match(/".*?"/)) return "string";
+      if (stream.match(/\{|\}/)) return "brace";
+      stream.next();
+      return null;
+    }
+  });
+
+  /* =====================
+     SYNTAX COLORS
+  ===================== */
+  const scratchTheme = EditorView.theme({
+    ".cm-motion": { color: "#4c97ff" },     // Motion blue
+    ".cm-control": { color: "#ffab19" },    // Control orange
+    ".cm-sensing": { color: "#5cb1d6" },    // Sensing light blue
+    ".cm-number": { color: "#c77dff" },
+    ".cm-string": { color: "#ffd166" },
+    ".cm-operator": { color: "#2ec4b6" }
+  });
+
+  /* =====================
+     AUTOCOMPLETE
+  ===================== */
+  const completions = [
+    "move (10) steps",
+    "turn (15) degrees",
+    "wait (1) seconds",
+    "repeat (10) times {",
+    "forever {",
+    "if <key space pressed?> {",
+    "else {",
+    "say (\"hello\")"
+  ];
+
+  function scratchAutocomplete(ctx) {
+    let word = ctx.matchBefore(/[\w<>\?]+/);
+    if (!word || (word.from === word.to && !ctx.explicit)) return null;
+    return {
+      from: word.from,
+      options: completions.map(c => ({ label: c, type: "keyword" }))
+    };
+  }
+
+  /* =====================
+     BASIC ERROR LINTER
+  ===================== */
+  const scratchLinter = linter(view => {
+    const text = view.state.doc.toString();
+    const errors = [];
+    let balance = 0;
+
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "{") balance++;
+      if (text[i] === "}") balance--;
+      if (balance < 0) {
+        errors.push({
+          from: i,
+          to: i + 1,
+          severity: "error",
+          message: "Extra closing brace"
+        });
+        break;
+      }
+    }
+
+    if (balance > 0) {
+      errors.push({
+        from: text.length - 1,
+        to: text.length,
+        severity: "error",
+        message: "Missing closing brace"
+      });
+    }
+
+    return errors;
+  });
+
+  /* =====================
+     EDITOR SETUP
+  ===================== */
+  const startCode =
+`repeat (10) times {
+  if <key space pressed?> {
+    move (10) steps
+  }
+}`;
+
+  const state = EditorState.create({
+    doc: startCode,
+    extensions: [
+      lineNumbers(),
+      highlightActiveLine(),
+      history(),
+      foldGutter({
+        markerDOM: open => {
+          const span = document.createElement("span");
+          span.textContent = open ? "▼" : "▶";
+          return span;
+        }
+      }),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      autocompletion({ override: [scratchAutocomplete] }),
+      lintGutter(),
+      scratchLinter,
+      keymap.of([
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...closeBracketsKeymap
+      ]),
+      scratchLang,
+      scratchTheme,
+      oneDark
+    ]
+  });
+
+  const view = new EditorView({
+    state,
+    parent: document.getElementById("editor")
+  });
+
+  view.focus();
+
+  window.runCode = () => {
+    console.log("RUN:\n" + view.state.doc.toString());
+  };
+</script>
+</head>
+
+<body>
+  <div class="toolbar">
+    <button onclick="runCode()">▶ Execute</button>
+    <div style="margin-left:auto;opacity:.6">Text Editor</div>
+  </div>
+
+  <div id="editor"></div>
+
+  <div class="statusbar">
+    <span>Typing OK • Folding OK • Linting OK</span>
+    <span>Ready for runtime</span>
+  </div>
+</body>
+</html>
