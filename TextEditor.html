@@ -1,237 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Text Scratch Editor</title>
-
+<meta charset="UTF-8" />
+<title>PenguinMod Text Code Editor</title>
 <style>
-  body {
+  html, body {
     margin: 0;
-    height: 100vh;
-    background: #0f1117;
-    color: #e6e6eb;
-    display: flex;
-    flex-direction: column;
-    font-family: ui-monospace, Consolas, monospace;
+    padding: 0;
+    height: 100%;
+    background: #1e1e1e;
+    color: white;
+    font-family: sans-serif;
   }
 
-  .toolbar {
-    height: 42px;
-    background: #161a23;
-    border-bottom: 1px solid #262a36;
+  #topbar {
+    height: 40px;
+    background: #252526;
     display: flex;
     align-items: center;
-    gap: 8px;
     padding: 0 10px;
+    gap: 10px;
   }
 
   button {
-    background: #23283a;
-    color: #e6e6eb;
+    background: #0e639c;
     border: none;
-    border-radius: 6px;
+    color: white;
     padding: 6px 12px;
+    border-radius: 4px;
     cursor: pointer;
   }
 
-  button:hover { background: #2f3560; }
+  button:hover {
+    background: #1177bb;
+  }
 
-  #editor { flex: 1; }
-
-  .statusbar {
-    height: 22px;
-    background: #161a23;
-    border-top: 1px solid #262a36;
-    font-size: 11px;
-    padding: 4px 8px;
-    opacity: 0.7;
-    display: flex;
-    justify-content: space-between;
+  #editor {
+    height: calc(100% - 40px);
+    width: 100%;
   }
 </style>
+</head>
+<body>
 
-<script type="module">
-  import { EditorState } from "https://esm.sh/@codemirror/state";
-  import { EditorView, keymap, lineNumbers, highlightActiveLine } from "https://esm.sh/@codemirror/view";
-  import { defaultKeymap, history, historyKeymap } from "https://esm.sh/@codemirror/commands";
-  import { indentOnInput, bracketMatching, foldGutter } from "https://esm.sh/@codemirror/language";
-  import { closeBrackets, closeBracketsKeymap, autocompletion } from "https://esm.sh/@codemirror/autocomplete";
-  import { StreamLanguage } from "https://esm.sh/@codemirror/language";
-  import { lintGutter, linter } from "https://esm.sh/@codemirror/lint";
-  import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+<div id="topbar">
+  <strong>🧠 Text Code</strong>
+  <button id="saveBtn">💾 Save & Run</button>
+</div>
 
-  /* =====================
-     SCRATCH TOKENIZER
-  ===================== */
-  const scratchLang = StreamLanguage.define({
-    token(stream) {
-      if (stream.match(/move|turn|go|point/i)) return "motion";
-      if (stream.match(/repeat|forever|if|else|wait/i)) return "control";
-      if (stream.match(/key|touching|mouse|pressed\?/i)) return "sensing";
-      if (stream.match(/<|>|=/)) return "operator";
-      if (stream.match(/\d+(\.\d+)?/)) return "number";
-      if (stream.match(/".*?"/)) return "string";
-      if (stream.match(/\{|\}/)) return "brace";
-      stream.next();
-      return null;
+<div id="editor"></div>
+
+<!-- Monaco -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
+<script>
+require.config({
+  paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs" }
+});
+
+require(["vs/editor/editor.main"], () => {
+
+  // 🔤 Custom language
+  monaco.languages.register({ id: "scratchtext" });
+
+  monaco.languages.setMonarchTokensProvider("scratchtext", {
+    tokenizer: {
+      root: [
+        [/move\s+\(\d+\)\s+steps/, "motion"],
+        [/turn\s+(right|left)\s+\(\d+\)\s+degrees/, "motion"],
+        [/repeat\s+\(\d+\)\s+times/, "control"],
+        [/if\s+<.+?>/, "control"],
+        [/when\s+key\s+.+?\s+pressed/, "event"],
+        [/[{}]/, "delimiter"]
+      ]
     }
   });
 
-  /* =====================
-     SYNTAX COLORS
-  ===================== */
-  const scratchTheme = EditorView.theme({
-    ".cm-motion": { color: "#4c97ff" },
-    ".cm-control": { color: "#ffab19" },
-    ".cm-sensing": { color: "#5cb1d6" },
-    ".cm-number": { color: "#c77dff" },
-    ".cm-string": { color: "#ffd166" },
-    ".cm-operator": { color: "#2ec4b6" }
-  });
-
-  /* =====================
-     AUTOCOMPLETE
-  ===================== */
-  const completions = [
-    "move (10) steps",
-    "turn (15) degrees",
-    "wait (1) seconds",
-    "repeat (10) times {",
-    "forever {",
-    "if <key space pressed?> {",
-    "else {",
-    "say (\"hello\")"
-  ];
-
-  function scratchAutocomplete(ctx) {
-    let word = ctx.matchBefore(/[\w<>\?]+/);
-    if (!word || (word.from === word.to && !ctx.explicit)) return null;
-    return {
-      from: word.from,
-      options: completions.map(c => ({ label: c, type: "keyword" }))
-    };
-  }
-
-  /* =====================
-     BASIC ERROR CHECK
-  ===================== */
-  const scratchLinter = linter(view => {
-    const text = view.state.doc.toString();
-    const errors = [];
-    let depth = 0;
-
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === "{") depth++;
-      if (text[i] === "}") depth--;
-      if (depth < 0) {
-        errors.push({
-          from: i,
-          to: i + 1,
-          severity: "error",
-          message: "Extra closing brace"
-        });
-        break;
-      }
-    }
-
-    if (depth > 0) {
-      errors.push({
-        from: text.length - 1,
-        to: text.length,
-        severity: "error",
-        message: "Missing closing brace"
-      });
-    }
-
-    return errors;
-  });
-
-  /* =====================
-     EDITOR INIT
-  ===================== */
-  const startCode =
-`repeat (10) times {
-  if <key space pressed?> {
-    move (10) steps
-  }
-}`;
-
-  const state = EditorState.create({
-    doc: startCode,
-    extensions: [
-      lineNumbers(),
-      highlightActiveLine(),
-      history(),
-      foldGutter(),
-      indentOnInput(),
-      bracketMatching(),
-      closeBrackets(),
-      autocompletion({ override: [scratchAutocomplete] }),
-      lintGutter(),
-      scratchLinter,
-      keymap.of([
-        ...defaultKeymap,
-        ...historyKeymap,
-        ...closeBracketsKeymap
-      ]),
-      scratchLang,
-      scratchTheme,
-      oneDark
+  monaco.editor.defineTheme("scratchDark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "motion", foreground: "4FC3F7" },
+      { token: "control", foreground: "FFB74D" },
+      { token: "event", foreground: "AED581" }
     ]
   });
 
-  const view = new EditorView({
-    state,
-    parent: document.getElementById("editor")
+  const editor = monaco.editor.create(document.getElementById("editor"), {
+    value:
+`when key space pressed {
+  repeat (10) times {
+    move (10) steps
+  }
+}`,
+    language: "scratchtext",
+    theme: "scratchDark",
+    automaticLayout: true,
+    folding: true,
+    minimap: { enabled: false }
   });
 
-  view.focus();
+  // 🧠 Scratch-text → instructions
+  function parseScratchText(code) {
+    const lines = code.split("\n");
+    const instructions = [];
 
-  /* =====================
-     PENGUINMOD BRIDGE
-  ===================== */
-  function send(type, payload) {
-    parent.postMessage({
-      source: "TextScratchEditor",
-      type,
-      payload
-    }, "*");
+    for (let line of lines) {
+      line = line.trim();
+
+      if (line.startsWith("move")) {
+        const n = line.match(/\((\d+)\)/)?.[1];
+        instructions.push({ opcode: "motion_movesteps", value: Number(n) });
+      }
+
+      if (line.startsWith("repeat")) {
+        const n = line.match(/\((\d+)\)/)?.[1];
+        instructions.push({ opcode: "control_repeat", times: Number(n) });
+      }
+
+      if (line.startsWith("when key")) {
+        const key = line.match(/key\s+(.+?)\s+pressed/)?.[1];
+        instructions.push({ opcode: "event_whenkeypressed", key });
+      }
+    }
+
+    return instructions;
   }
 
-  window.runCode = () => {
-    send("run", view.state.doc.toString());
+  // 💾 Save & Run
+  document.getElementById("saveBtn").onclick = () => {
+    const code = editor.getValue();
+    const parsed = parseScratchText(code);
+
+    window.parent.postMessage({
+      type: "PM_TEXT_CODE_EXECUTE",
+      source: "TextEditor",
+      code,
+      parsed
+    }, "*");
+
+    alert("Sent to PenguinMod!");
   };
 
-  window.saveCode = () => {
-    send("save", view.state.doc.toString());
-  };
-
-  window.addEventListener("message", e => {
-    if (e.data?.type === "load" && typeof e.data.payload === "string") {
-      view.dispatch({
-        changes: {
-          from: 0,
-          to: view.state.doc.length,
-          insert: e.data.payload
-        }
-      });
-    }
-  });
+});
 </script>
-</head>
 
-<body>
-  <div class="toolbar">
-    <button onclick="runCode()">▶ Run</button>
-    <button onclick="saveCode()">💾 Save</button>
-    <div style="margin-left:auto;opacity:.6">Text Scratch Mode</div>
-  </div>
-
-  <div id="editor"></div>
-
-  <div class="statusbar">
-    <span>Connected to PenguinMod</span>
-    <span>Scratch Text Editor</span>
-  </div>
 </body>
 </html>
