@@ -79,7 +79,7 @@ require(["vs/editor/editor.main"], () => {
   });
 
   const editor = monaco.editor.create(document.getElementById("editor"), {
-    value: `when key space pressed {\n  repeat (10) times {\n    move (10) steps\n  }\n}`,
+    value: "",
     language: "scratchtext",
     theme: "scratchDark",
     automaticLayout: true,
@@ -87,7 +87,6 @@ require(["vs/editor/editor.main"], () => {
     minimap: { enabled: false }
   });
 
-  // Force focus so typing works
   editor.focus();
 
   const preview = document.getElementById("preview");
@@ -142,34 +141,17 @@ require(["vs/editor/editor.main"], () => {
   editor.onDidChangeModelContent(updatePreview);
   updatePreview();
 
-  // ================= Save & Run =================
-  document.getElementById("saveBtn").onclick = () => {
+  function sendMessage(type) {
     const code = editor.getValue();
     const parsed = updatePreview();
+    window.opener?.postMessage({ type, source: "TextEditor", code, parsed }, "*");
+    if (type === "PM_TEXT_CODE_SAVE") alert("💾 Code saved!");
+  }
 
-    // send message to parent window
-    window.opener?.postMessage({
-      type: "PM_TEXT_CODE_SAVE",
-      source: "TextEditor",
-      code,
-      parsed
-    }, "*");
+  document.getElementById("saveBtn").onclick = () => sendMessage("PM_TEXT_CODE_SAVE");
+  document.getElementById("runBtn").onclick = () => sendMessage("PM_TEXT_CODE_EXECUTE");
 
-    alert("💾 Code sent to PenguinMod!");
-  };
-
-  document.getElementById("runBtn").onclick = () => {
-    const code = editor.getValue();
-    const parsed = updatePreview();
-    window.opener?.postMessage({
-      type: "PM_TEXT_CODE_EXECUTE",
-      source: "TextEditor",
-      code,
-      parsed
-    }, "*");
-  };
-
-  // Receive code from PM extension
+  // load code from PM
   window.addEventListener("message", e => {
     if(e.data?.type === "PM_TEXT_CODE_LOAD" && e.data.code){
       editor.setValue(e.data.code);
