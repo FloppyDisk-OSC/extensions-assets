@@ -1,2 +1,7 @@
-elementA+elementB=block text,type
-test1+test2=woah,type
+Water+Fire=Steam,reporter
+Steam+Air=Cloud,reporter
+Cloud+Fire=<Lightning?>,boolean
+Air+Air=move (steps) steps,command
+Fire+Fire=forever,hat
+Logic+Logic=if <condition> then,branch
+Loop+Loop=stop,end
