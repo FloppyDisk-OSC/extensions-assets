@@ -1,1 +1,2 @@
-test+test=sigma,reporter
+elementA+elementB=block text,type
+test1+test2=woah,type
